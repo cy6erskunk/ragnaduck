@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="description" content="A three.js survival game: a viking holds a fjord island against giant brain-eating ducks.">
+<meta name="theme-color" content="#141b24">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ragnaduck">
 <title>Ragnaduck</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;1,600&display=swap">
@@ -17,7 +22,7 @@ html,body{margin:0}
   --body:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
   color-scheme:dark;
 }
-html,body{height:100%;overflow:hidden;background:var(--night);color:var(--bone);font-family:var(--body);
+html,body{height:100%;overflow:hidden;touch-action:none;overscroll-behavior:none;-webkit-text-size-adjust:100%;background:var(--night);color:var(--bone);font-family:var(--body);
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 #app{position:fixed;inset:0;touch-action:none}
 canvas{display:block;width:100%;height:100%;touch-action:none}
@@ -107,7 +112,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 #bRage.ready{opacity:1;border-color:var(--gold);color:var(--gold);box-shadow:0 0 18px rgba(242,201,76,.6);animation:throb .6s infinite alternate}
 @keyframes throb{to{box-shadow:0 0 34px rgba(242,201,76,.95)}}
 
-.screen{position:fixed;inset:0;z-index:10;display:grid;place-items:center;overflow-y:auto;
+.screen{position:fixed;inset:0;z-index:10;display:grid;place-items:center;overflow-y:auto;touch-action:pan-y;
   background:linear-gradient(180deg,rgba(20,27,36,.5),rgba(11,15,20,.92));
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px}
 .card{max-width:460px;width:100%;display:grid;gap:14px;text-align:center}
@@ -172,6 +177,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
     <div class="sub" id="waveTxt">Wave 1</div>
     <div class="sub" id="killTxt">0 felled</div>
     <div class="icons">
+      <button class="icon" id="fsBtn" aria-label="Full screen" hidden><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path id="fsPath" d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5"/></svg></button>
       <button class="icon" id="muteBtn" aria-label="Toggle sound">SND</button>
       <button class="icon" id="pauseBtn" aria-label="Pause">II</button>
     </div>
@@ -237,7 +243,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 <div class="screen" id="pauseScreen" hidden>
   <div class="card">
     <h1>Rest<em>.</em></h1>
-    <p class="saga">The ducks are waiting. They are patient birds.</p>
+    <p class="saga" id="pauseMsg">The ducks are waiting. They are patient birds.</p>
     <button class="cta" id="resumeBtn">Resume</button>
   </div>
 </div>
@@ -1048,6 +1054,8 @@ function startGame() {
   initAudio(); reset();
   ['startScreen', 'overScreen', 'pauseScreen', 'runeScreen'].forEach(id => $(id).hidden = true);
   S.running = true; last = performance.now();
+  if (coarse && canFS && !isFS()) enterFS();
+  keepAwake();
 }
 function gameOver() {
   S.over = true; S.running = false;
@@ -1095,6 +1103,49 @@ $('startBtn').addEventListener('click', startGame);
 $('againBtn').addEventListener('click', startGame);
 $('resumeBtn').addEventListener('click', () => togglePause(false));
 $('pauseBtn').addEventListener('click', () => togglePause(true));
+/* ---- full screen, wake lock, and protection against accidental zoom ---- */
+const docEl = document.documentElement;
+const coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+const canFS = !!((docEl.requestFullscreen || docEl.webkitRequestFullscreen) && (document.fullscreenEnabled || document.webkitFullscreenEnabled));
+const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function enterFS() {
+  try { const r = (docEl.requestFullscreen || docEl.webkitRequestFullscreen).call(docEl, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+}
+function exitFS() {
+  try { const r = (document.exitFullscreen || document.webkitExitFullscreen).call(document); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+}
+function syncFS() {
+  $('fsPath').setAttribute('d', isFS() ? 'M6 1v5H1M15 6h-5V1M10 15v-5h5M1 10h5v5' : 'M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5');
+  $('fsBtn').setAttribute('aria-label', isFS() ? 'Exit full screen' : 'Full screen');
+}
+$('fsBtn').hidden = !canFS;
+$('fsBtn').addEventListener('click', () => { isFS() ? exitFS() : enterFS(); });
+document.addEventListener('fullscreenchange', syncFS); document.addEventListener('webkitfullscreenchange', syncFS);
+let wakeLock = null;
+function keepAwake() {
+  try { if (navigator.wakeLock && !wakeLock) navigator.wakeLock.request('screen').then(l => { wakeLock = l; l.addEventListener('release', () => { wakeLock = null; }); }).catch(() => {}); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.running) keepAwake(); });
+// Block pinch zoom, double-tap zoom and long-press menus
+['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const t = Date.now();
+  if (t - lastTouchEnd < 350 && !(e.target.closest && e.target.closest('button'))) e.preventDefault();
+  lastTouchEnd = t;
+}, { passive: false });
+document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+document.addEventListener('contextmenu', e => e.preventDefault());
+// If the view gets zoomed or the window loses focus anyway, pause instead of letting the ducks feast
+function safetyPause(msg) {
+  if (!S.running || S.over || S.phase === 'cards') return;
+  $('pauseMsg').textContent = msg;
+  togglePause(true);
+}
+if (window.visualViewport) visualViewport.addEventListener('resize', () => { if (visualViewport.scale > 1.02) safetyPause('The view got zoomed in. Pinch back out, then resume.'); });
+window.addEventListener('blur', () => safetyPause('Paused while you were away. The ducks are waiting.'));
+$('resumeBtn').addEventListener('click', () => { $('pauseMsg').textContent = 'The ducks are waiting. They are patient birds.'; });
 $('muteBtn').addEventListener('click', () => { initAudio(); muted = !muted; $('muteBtn').textContent = muted ? 'OFF' : 'SND'; $('muteBtn').style.opacity = muted ? .5 : 1; });
 document.addEventListener('visibilitychange', () => { if (document.hidden && S.running) togglePause(true); });
 
