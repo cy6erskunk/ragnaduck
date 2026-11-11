@@ -11,7 +11,7 @@ process.env.NEON_AUTH_BASE_URL = AUTH;
 process.env.NEON_AUTH_COOKIE_SECRET = 'test-secret-test-secret-test-secret-1234';
 
 const { setSqlForTests } = await import('../api/_lib/db.js');
-const { cleanName } = await import('../api/_lib/auth.js');
+const { cleanName, authConfig } = await import('../api/_lib/auth.js');
 const { waveCounts, PTS, minDurationMs } = await import('../api/_lib/rules.js');
 const route = async p => (await import(`../api/${p}.js`)).default;
 
@@ -131,6 +131,35 @@ test('auth proxy: trades the one-time verifier for a session cookie after a soci
   const sent = upstream.find(u => u.search.includes('good-verifier'));
   assert.ok(sent, 'the verifier reached Neon Auth');
   assert.ok(!sent.search.includes('__path'), 'the rewrite parameter is not leaked upstream');
+});
+
+test('auth config needs only what the Vercel-Neon integration provides', async () => {
+  const saved = { ...process.env };
+  try {
+    delete process.env.NEON_AUTH_COOKIE_SECRET;
+    process.env.NEON_AUTH_BASE_URL = `${AUTH}/`;
+    process.env.DATABASE_URL = 'postgresql://user:pw-one@ep-a.neon.example/neondb';
+    const one = authConfig();
+    assert.equal(one.baseUrl, AUTH, 'a trailing slash is dropped');
+    assert.ok(one.cookieSecret.length >= 32, 'the derived key is long enough for the SDK');
+    assert.ok(!one.cookieSecret.includes('pw-one'), 'the database password is not used as-is');
+    assert.equal(authConfig().cookieSecret, one.cookieSecret, 'stable across calls');
+    process.env.DATABASE_URL = 'postgresql://user:pw-two@ep-b.neon.example/neondb';
+    assert.notEqual(authConfig().cookieSecret, one.cookieSecret, 'each environment gets its own key');
+    // sign-in still works end to end with the derived key
+    const me = await call('me', { as: 'tok-astrid' });
+    assert.equal(me.body.user.name, 'Astrid');
+    assert.ok(me.cookies.some(c => c.startsWith('__Secure-neon-auth.local.session_data=')));
+    // an explicit secret wins; missing variables fail with a clear message
+    process.env.NEON_AUTH_COOKIE_SECRET = 'explicit-secret-explicit-secret-123456';
+    assert.equal(authConfig().cookieSecret, 'explicit-secret-explicit-secret-123456');
+    delete process.env.NEON_AUTH_COOKIE_SECRET; delete process.env.DATABASE_URL;
+    assert.throws(authConfig, /DATABASE_URL/);
+    delete process.env.NEON_AUTH_BASE_URL;
+    assert.throws(authConfig, /NEON_AUTH_BASE_URL/);
+  } finally {
+    for (const k of ['NEON_AUTH_COOKIE_SECRET', 'NEON_AUTH_BASE_URL', 'DATABASE_URL']) { if (k in saved) process.env[k] = saved[k]; else delete process.env[k]; }
+  }
 });
 
 // ---- accounts and players

@@ -7,14 +7,22 @@ A three.js survival game: a viking holds a fjord island against giant brain-eati
 ## Deploying the online version (Vercel + Neon)
 
 1. **Vercel project.** Create a new project from this repo with the "Other" framework preset. No build command is needed.
-2. **Database.** Add a Neon database to the project (Storage tab), which sets `DATABASE_URL`. Run `schema.sql` once in the Neon SQL editor.
-3. **Neon Auth.** Enable Auth for the same Neon project and branch, then:
-   - set `NEON_AUTH_BASE_URL` in Vercel to the Auth URL Neon shows;
-   - add your production domain to Neon Auth's trusted domains;
-   - turn on the sign-in methods you want (the game offers Google, GitHub and email with password). For production, give Google and GitHub your own OAuth credentials.
-4. **Cookie secret.** Set `NEON_AUTH_COOKIE_SECRET` to a random string of at least 32 characters, e.g. `openssl rand -base64 32`.
+2. **Database.** Add a Neon database to the project through the Vercel-Neon integration (Storage tab). Run `schema.sql` once in the Neon SQL editor.
+3. **Neon Auth.** Enable Auth on the production branch of that Neon project, then tick `NEON_AUTH_BASE_URL` in the integration's settings so Vercel receives it.
+4. **Sign-in methods.** In Neon Auth, turn on the ones you want (the game offers Google, GitHub and email with password). For production, give Google and GitHub your own OAuth credentials.
 
-Sign-in only works on domains listed as trusted in Neon Auth, so add a preview domain there if you want to test on one.
+No environment variables need to be typed in by hand. The integration provides both that the game reads:
+
+| Variable | Used for |
+| --- | --- |
+| `DATABASE_URL` | The Postgres connection. |
+| `NEON_AUTH_BASE_URL` | Where `api/auth.js` forwards sign-in requests. |
+
+The integration also adds the production and preview deployment URLs to Neon Auth's trusted domains, and gives each preview deployment its own database branch and Auth instance. OAuth providers are configured per branch, so Google and GitHub sign-in on a preview needs them set up on that branch.
+
+`VITE_NEON_AUTH_URL`, which the integration can also set, is not used: the browser reaches Neon Auth through `/api/auth` rather than directly.
+
+The SDK signs a short-lived session cache cookie with a key. By default that key is derived from `DATABASE_URL`. Set `NEON_AUTH_COOKIE_SECRET` (at least 32 characters) only if you want to supply your own.
 
 ## How sign-in works
 

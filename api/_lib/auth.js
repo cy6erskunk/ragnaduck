@@ -1,13 +1,24 @@
 // Sign-in is handled by Neon Auth (managed Better Auth). The browser never talks to
 // Neon's domain: api/auth.js proxies it under /api/auth, so the session cookie belongs
 // to this site and is not blocked as a third-party cookie.
+import { createHmac } from 'node:crypto';
 import { handleAuthProxyRequest } from '@neon/auth/server';
 import { sql } from './db.js';
 
+/**
+ * Both values come from the Vercel-Neon integration: NEON_AUTH_BASE_URL directly, and the
+ * key that signs the SDK's session cache cookie derived from DATABASE_URL, which is already
+ * a secret and differs per environment and per preview branch. Set NEON_AUTH_COOKIE_SECRET
+ * to use a key of your own instead.
+ */
 export function authConfig() {
   const baseUrl = process.env.NEON_AUTH_BASE_URL;
-  const cookieSecret = process.env.NEON_AUTH_COOKIE_SECRET;
-  if (!baseUrl || !cookieSecret) throw new Error('NEON_AUTH_BASE_URL and NEON_AUTH_COOKIE_SECRET must be set');
+  if (!baseUrl) throw new Error('NEON_AUTH_BASE_URL is not set. Enable Neon Auth and expose the variable in the Vercel-Neon integration.');
+  let cookieSecret = process.env.NEON_AUTH_COOKIE_SECRET;
+  if (!cookieSecret) {
+    if (!process.env.DATABASE_URL) throw new Error('Set DATABASE_URL (or NEON_AUTH_COOKIE_SECRET) so the session cache cookie can be signed');
+    cookieSecret = createHmac('sha256', process.env.DATABASE_URL).update('ragnaduck session cache cookie').digest('base64url');
+  }
   return { baseUrl: baseUrl.replace(/\/+$/, ''), cookieSecret };
 }
 
