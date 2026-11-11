@@ -135,6 +135,23 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .tally div{display:grid}
 .tally b{font-family:var(--display);font-weight:400;font-size:40px;line-height:1;color:var(--gold);font-variant-numeric:tabular-nums}
 .tally span{font-size:12px;letter-spacing:.14em;text-transform:uppercase}
+.online{display:grid;gap:6px;justify-items:center}
+.who{margin:0;font-size:15px;letter-spacing:.04em;opacity:.9;font-variant-numeric:tabular-nums}
+.links{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 20px}
+.lnk{font:700 14px var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);background:none;border:none;border-bottom:1px solid currentColor;padding:2px 0;cursor:pointer;text-decoration:none}
+.lnk:focus-visible,.tab:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+#boardScreen{background:rgba(11,15,20,.97)}
+.tabs{display:flex;justify-content:center;gap:8px}
+.tab{font:700 13px var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--bone);background:rgba(11,15,20,.55);border:1px solid rgba(239,230,210,.3);padding:6px 14px;cursor:pointer}
+.tab[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
+.board{list-style:none;margin:0;padding:0;display:grid;gap:2px;text-align:left;max-height:44vh;overflow-y:auto;font-variant-numeric:tabular-nums}
+.board li{display:grid;grid-template-columns:2.2em minmax(0,1fr) auto auto;gap:10px;align-items:baseline;padding:6px 10px;background:rgba(11,15,20,.5);font-size:17px}
+.board li.me{outline:1px solid var(--gold);outline-offset:-1px;color:var(--gold)}
+.board li.note{display:block;text-align:center;opacity:.75}
+.board .rk{font-family:var(--display);font-size:20px;color:var(--ember)}
+.board .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board .wv{font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+.board .sc{font-family:var(--display);font-size:20px}
 .newbest{color:var(--gold);font-weight:700;letter-spacing:.2em;text-transform:uppercase;margin:0}
 .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .rune{display:grid;gap:6px;align-content:start;justify-items:center;text-align:center;cursor:pointer;color:var(--bone);font-family:var(--body);
@@ -212,6 +229,14 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
     </dl>
     <button class="cta" id="startBtn">Raise the axe</button>
     <p class="best" id="bestTxt"></p>
+    <div class="online" id="online" hidden>
+      <p class="who" id="who"></p>
+      <div class="links">
+        <a class="lnk" id="loginLnk" href="api/auth/login">Sign in with GitHub</a>
+        <button class="lnk" id="boardBtn">Leaderboard</button>
+        <button class="lnk" id="logoutBtn" hidden>Sign out</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -235,8 +260,29 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
       <div><b id="oKills">0</b><span>Felled</span></div>
       <div><b id="oCombo">0</b><span>Best combo</span></div>
     </div>
+    <p class="who" id="postTxt" hidden></p>
     <button class="cta" id="againBtn">Fight again</button>
     <p class="best" id="bestTxt2"></p>
+    <div class="links" id="overLinks" hidden><button class="lnk" id="boardBtn2">Leaderboard</button></div>
+  </div>
+</div>
+
+<div class="screen" id="boardScreen" hidden>
+  <div class="card">
+    <p class="runes">HALL OF SAGAS</p>
+    <h2>Leader<em>board</em></h2>
+    <div class="tabs">
+      <button class="tab" id="tabAll" aria-pressed="true">All time</button>
+      <button class="tab" id="tabWeek" aria-pressed="false">This week</button>
+    </div>
+    <ol class="board" id="board"></ol>
+    <div class="tally" id="myStats" hidden>
+      <div><b id="mRank">-</b><span>Your rank</span></div>
+      <div><b id="mRuns">0</b><span>Runs</span></div>
+      <div><b id="mKills">0</b><span>Felled</span></div>
+      <div><b id="mWave">0</b><span>Best wave</span></div>
+    </div>
+    <button class="cta" id="boardClose">Back</button>
   </div>
 </div>
 
@@ -726,6 +772,7 @@ function reset() {
     swing: null, chain: 0, chainT: 0, buffer: 0, throwCd: 0, dashT: 0, dashCd: 0, dashDir: new THREE.Vector3(), dashId: 0,
     invuln: 0, st: 100, stMax: 100, stDelay: 0, winded: 0, daze: 0, puddleT: 0, berserkT: 0, thor: 0, thorTick: 0, tri: 0, scale: 1,
     shake: 0, punch: 0, hurt: 0, flash: 0, hitstop: 0, slowT: 0, walk: 0, over: false, sayT: 3, quackT: 1, bossAlive: false,
+    killsBy: {}, cleared: 0, eggs: 0, strikes: 0, playMs: 0,
   });
   viking.position.copy(S.pos); viking.rotation.set(0, S.facing, 0); viking.scale.setScalar(1);
   updateHud();
@@ -965,7 +1012,7 @@ function killDuck(d, dir, o = {}) {
   d.vy = Math.max(d.vy, (8 + rand(0, 4)) / Math.pow(d.T.mass, 0.3));
   if (d.type === 'elder') { d.c.vel.multiplyScalar(0.3); d.vy = 6; }
   if (o.src === 'self') return; // bomber blew itself up: no score
-  S.kills++;
+  S.kills++; S.killsBy[d.type] = (S.killsBy[d.type] || 0) + 1;
   // combo & multikill
   S.combo++; S.comboT = 2.6; S.maxCombo = Math.max(S.maxCombo, S.combo);
   S.multi = S.multiT > 0 ? S.multi + 1 : 1; S.multiT = 0.45;
@@ -1049,11 +1096,98 @@ function updateChips() {
   if (h !== lastChips) { $('chips').innerHTML = h; lastChips = h; }
 }
 
+/* ================= online: sign-in, run tickets, leaderboard =================
+   Talks to the api/ routes next to this page. Where they don't exist (a plain static
+   host), every call fails quietly and the game stays offline with its local best. */
+const online = { up: false, user: null, stats: null, run: null };
+async function api(path, body) {
+  const r = await fetch('api/' + path, body
+    ? { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+    : { credentials: 'same-origin' });
+  if (!(r.headers.get('content-type') || '').includes('application/json')) throw new Error('offline');
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'Request failed');
+  return j;
+}
+function showOnline() {
+  $('online').hidden = !online.up; $('overLinks').hidden = !online.up;
+  if (!online.up) return;
+  const u = online.user, st = online.stats;
+  $('loginLnk').hidden = !!u; $('logoutBtn').hidden = !u;
+  $('who').textContent = !u ? 'Sign in to post your scores.'
+    : st && st.best != null ? `${u.name} · best ${st.best.toLocaleString()} · rank #${st.rank}`
+    : `${u.name} · no runs posted yet`;
+}
+async function refreshMe() {
+  try { const j = await api('me'); online.up = true; online.user = j.user; online.stats = j.stats || null; }
+  catch (e) { online.up = false; online.user = null; }
+  showOnline();
+}
+// A run ticket is requested when the run starts; the score is posted against it when the run ends.
+function beginRun() {
+  online.run = online.user ? api('runs/start', {}).then(j => j.runId, () => null) : null;
+}
+async function postRun() {
+  const out = $('postTxt');
+  out.hidden = !online.up;
+  if (!online.up) return;
+  if (!online.user) { out.textContent = 'Sign in from the title screen to post scores.'; return; }
+  const ticket = online.run; online.run = null;
+  const summary = { score: S.score, wave: S.wave, cleared: S.cleared, kills: Object.assign({}, S.killsBy), eggs: S.eggs, strikes: S.strikes, maxCombo: S.maxCombo, durationMs: Math.round(S.playMs) };
+  out.textContent = 'Posting score...';
+  try {
+    const runId = await ticket;
+    if (!runId) throw new Error('This run had no ticket, so it was not posted.');
+    const j = await api('runs/finish', { runId, summary });
+    out.textContent = j.personalBest ? `Posted. New personal best, rank #${j.rank}.` : `Posted. Your best is ${j.best.toLocaleString()}, rank #${j.rank}.`;
+    refreshMe();
+  } catch (e) {
+    out.textContent = e.message === 'offline' ? 'Could not reach the server. Score not posted.' : `Score not posted: ${e.message}`;
+  }
+}
+let boardPeriod = 'all';
+async function loadBoard(period) {
+  boardPeriod = period;
+  $('tabAll').setAttribute('aria-pressed', period === 'all'); $('tabWeek').setAttribute('aria-pressed', period === 'week');
+  const ol = $('board');
+  const note = t => { ol.textContent = ''; const li = document.createElement('li'); li.className = 'note'; li.textContent = t; ol.appendChild(li); };
+  note('Loading...');
+  try {
+    const j = await api('leaderboard?period=' + period);
+    if (boardPeriod !== period) return;
+    if (!j.rows.length) return note(period === 'week' ? 'No sagas this week yet.' : 'No sagas yet. Be the first.');
+    ol.textContent = '';
+    for (const r of j.rows) {
+      const li = document.createElement('li');
+      if (online.user && online.user.id === r.id) li.className = 'me';
+      for (const [cls, text] of [['rk', r.rank], ['nm', r.name], ['wv', 'Wave ' + r.wave], ['sc', r.score.toLocaleString()]]) {
+        const sp = document.createElement('span'); sp.className = cls; sp.textContent = text; li.appendChild(sp);
+      }
+      ol.appendChild(li);
+    }
+  } catch (e) { note('Could not load the leaderboard.'); }
+}
+function openBoard() {
+  const st = online.stats;
+  $('myStats').hidden = !(online.user && st);
+  if (online.user && st) {
+    $('mRank').textContent = st.rank ? '#' + st.rank : '-'; $('mRuns').textContent = st.runs;
+    $('mKills').textContent = st.kills.toLocaleString(); $('mWave').textContent = st.bestWave;
+  }
+  $('boardScreen').hidden = false; loadBoard(boardPeriod);
+}
+$('boardBtn').addEventListener('click', openBoard); $('boardBtn2').addEventListener('click', openBoard);
+$('boardClose').addEventListener('click', () => { $('boardScreen').hidden = true; });
+$('tabAll').addEventListener('click', () => loadBoard('all')); $('tabWeek').addEventListener('click', () => loadBoard('week'));
+$('logoutBtn').addEventListener('click', async () => { try { await api('auth/logout', {}); } catch (e) {} refreshMe(); });
+refreshMe();
+
 /* ================= flow ================= */
 function startGame() {
   initAudio(); reset();
   ['startScreen', 'overScreen', 'pauseScreen', 'runeScreen'].forEach(id => $(id).hidden = true);
   S.running = true; last = performance.now();
+  beginRun();
   if (coarse && canFS && !isFS()) enterFS();
   keepAwake();
 }
@@ -1064,6 +1198,7 @@ function gameOver() {
   if (nb) { best = { score: S.score, wave: S.wave }; saveBest(); }
   showBest();
   $('newBest').hidden = !nb;
+  postRun();
   $('oScore').textContent = S.score.toLocaleString(); $('oWave').textContent = S.wave; $('oKills').textContent = S.kills; $('oCombo').textContent = S.maxCombo;
   $('overLine').textContent = pick(['A duck got you. Then the rest of them got the rest of you.', 'The flock feasted. Valhalla has a bird problem now.', 'Your helmet was not enough. It never is with ducks.', 'They said “brains” and they meant it.']);
   setTimeout(() => { $('overScreen').hidden = false; $('againBtn').focus(); }, 1100);
@@ -1077,6 +1212,11 @@ function togglePause(force) {
 function showRunes() {
   S.phase = 'cards';
   const avail = RUNES.filter(r => U[r.id] < r.max);
+  if (!avail.length) {   // every rune is maxed: heal instead of showing an empty choice
+    S.hp = Math.min(S.maxHp, S.hp + 25); S.phase = 'inter'; S.phaseT = 1.0; updateHud();
+    floatText(new THREE.Vector3(S.pos.x, 3, S.pos.z), 'All runes carved. +25 brain', 'big', 1.6, 1.2);
+    return;
+  }
   const choice = [];
   while (choice.length < 3 && avail.length) choice.push(avail.splice(Math.floor(Math.random() * avail.length), 1)[0]);
   const box = $('cards'); box.innerHTML = '';
@@ -1132,7 +1272,7 @@ document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (e.sca
 let lastTouchEnd = 0;
 document.addEventListener('touchend', e => {
   const t = Date.now();
-  if (t - lastTouchEnd < 350 && !(e.target.closest && e.target.closest('button'))) e.preventDefault();
+  if (t - lastTouchEnd < 350 && !(e.target.closest && e.target.closest('button,a'))) e.preventDefault();
   lastTouchEnd = t;
 }, { passive: false });
 document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
@@ -1548,7 +1688,7 @@ function updateCorpse(d, dt) {
           if (o.state === 'fly' || o.state === 'aim') o.state = 'fall';
           c.vel.multiplyScalar(0.8); sfx.hit();
           if (c.bowled === 2) floatText(new THREE.Vector3(d.pos.x, d.y + 2, d.pos.z), 'SPARE!', 'big', 1.1, 1.4);
-          if (c.bowled === 3) { announce('STRIKE!'); S.score += 500; floatText(new THREE.Vector3(d.pos.x, d.y + 2.5, d.pos.z), '+500', 'pts', 1.2, 1.6); }
+          if (c.bowled === 3) { announce('STRIKE!'); S.score += 500; S.strikes++; floatText(new THREE.Vector3(d.pos.x, d.y + 2.5, d.pos.z), '+500', 'pts', 1.2, 1.6); }
         }
       }
     }
@@ -1594,7 +1734,7 @@ function update(dt) {
       }
     } else if (!alive) {
       S.phase = 'clear'; S.phaseT = 1.8;
-      const bonus = 250 * S.wave; S.score += bonus;
+      const bonus = 250 * S.wave; S.score += bonus; S.cleared = S.wave;
       banner(`Wave ${S.wave} cleared`, `+${bonus} survival bonus`, 1700); sfx.horn(); updateHud();
     }
   } else if (S.phase === 'clear') { S.phaseT -= dt; if (S.phaseT <= 0) showRunes(); }
@@ -1690,7 +1830,7 @@ function collect(p) {
   if (p.kind === 'mead') { S.hp = Math.min(S.maxHp, S.hp + 20 + 8 * U.mead); }
   else if (p.kind === 'thor') { S.thor = 10 + extra; S.thorTick = 0; announce('MJÖLNIR!', 'blue'); screenFlash(0.4); }
   else if (p.kind === 'tri') { S.tri = 9 + extra; S.throwCd = 0; announce('AXE STORM!'); }
-  else { S.score += 1000; puff(p.g.position, [0xf2c94c, 0xfff1a0], 24, 5, { y: 0.5 }); floatText(at.clone().setY(at.y + 1), '+1000', 'pts', 1.3, 1.6); }
+  else { S.score += 1000; S.eggs++; puff(p.g.position, [0xf2c94c, 0xfff1a0], 24, 5, { y: 0.5 }); floatText(at.clone().setY(at.y + 1), '+1000', 'pts', 1.3, 1.6); }
   updateHud();
 }
 
@@ -1773,6 +1913,7 @@ function frame(now) {
   const real = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = now;
   const paused = !$('pauseScreen').hidden;
   if (S.running) {
+    S.playMs += real * 1000;
     let gdt = real;
     if (S.hitstop > 0) { S.hitstop -= real; gdt = 0; }
     if (S.slowT > 0) { S.slowT -= real; gdt *= 0.3; }
