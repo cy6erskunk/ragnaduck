@@ -1,10 +1,10 @@
 -- Ragnaduck online: players and runs. Run once against the Neon database.
+-- Accounts themselves live in the neon_auth schema, which Neon Auth manages.
 
-CREATE TABLE IF NOT EXISTS users (
-  id          BIGSERIAL PRIMARY KEY,
-  github_id   BIGINT NOT NULL UNIQUE,
-  name        TEXT NOT NULL,
-  avatar_url  TEXT,
+CREATE TABLE IF NOT EXISTS players (
+  id          BIGSERIAL PRIMARY KEY,            -- public id, safe to show
+  user_id     TEXT NOT NULL UNIQUE,             -- neon_auth."user".id
+  name        TEXT NOT NULL,                    -- display name on the leaderboard
   banned      BOOLEAN NOT NULL DEFAULT FALSE,   -- hides the player from the leaderboard
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- checks: it is kept for review but never shown.
 CREATE TABLE IF NOT EXISTS runs (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  player_id    BIGINT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   finished_at  TIMESTAMPTZ,
   score        INTEGER,
@@ -26,5 +26,5 @@ CREATE TABLE IF NOT EXISTS runs (
   flagged      TEXT
 );
 
-CREATE INDEX IF NOT EXISTS runs_user_started ON runs (user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS runs_player_started ON runs (player_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS runs_board ON runs (score DESC) WHERE flagged IS NULL AND score IS NOT NULL;

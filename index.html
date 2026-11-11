@@ -140,7 +140,18 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 .links{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 20px}
 .lnk{font:700 14px var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);background:none;border:none;border-bottom:1px solid currentColor;padding:2px 0;cursor:pointer;text-decoration:none}
 .lnk:focus-visible,.tab:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
-#boardScreen{background:rgba(11,15,20,.97)}
+#boardScreen,#authScreen{background:rgba(11,15,20,.97)}
+.stack{display:grid;gap:8px;width:100%;max-width:320px;margin:0 auto}
+.stack input,.nameform input{font:500 17px var(--body);color:var(--bone);background:rgba(11,15,20,.6);border:1px solid rgba(239,230,210,.35);border-radius:0;
+  padding:10px 12px;min-width:0;-webkit-user-select:text;user-select:text;touch-action:manipulation}
+.stack input::placeholder,.nameform input::placeholder{color:rgba(239,230,210,.5)}
+.stack input:focus-visible,.nameform input:focus-visible,.soc:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.soc{font:700 15px var(--body);letter-spacing:.1em;text-transform:uppercase;color:var(--ink);background:var(--bone);border:none;padding:12px 14px;cursor:pointer}
+.soc:disabled,.cta:disabled{opacity:.5;cursor:default}
+.or{margin:0;font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;opacity:.6}
+.nameform{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap}
+.nameform input{width:13em;max-width:100%;padding:7px 10px}
+.msg{margin:0;font-size:15px;min-height:1.3em;color:var(--gold)}
 .tabs{display:flex;justify-content:center;gap:8px}
 .tab{font:700 13px var(--body);letter-spacing:.12em;text-transform:uppercase;color:var(--bone);background:rgba(11,15,20,.55);border:1px solid rgba(239,230,210,.3);padding:6px 14px;cursor:pointer}
 .tab[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
@@ -232,7 +243,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
     <div class="online" id="online" hidden>
       <p class="who" id="who"></p>
       <div class="links">
-        <a class="lnk" id="loginLnk" href="api/auth/login">Sign in with GitHub</a>
+        <button class="lnk" id="loginBtn">Sign in</button>
         <button class="lnk" id="boardBtn">Leaderboard</button>
         <button class="lnk" id="logoutBtn" hidden>Sign out</button>
       </div>
@@ -267,6 +278,29 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   </div>
 </div>
 
+<div class="screen" id="authScreen" hidden>
+  <div class="card">
+    <p class="runes">JOIN THE SAGA</p>
+    <h2 id="authTitle">Sign <em>in</em></h2>
+    <div class="stack">
+      <button class="soc" id="authGoogle">Continue with Google</button>
+      <button class="soc" id="authGithub">Continue with GitHub</button>
+    </div>
+    <p class="or">or with email</p>
+    <form class="stack" id="authForm" novalidate>
+      <input id="authName" aria-label="Viking name" placeholder="Viking name" autocomplete="nickname" maxlength="24" hidden>
+      <input id="authEmail" type="email" aria-label="Email" placeholder="Email" autocomplete="email" autocapitalize="off" spellcheck="false">
+      <input id="authPass" type="password" aria-label="Password" placeholder="Password" autocomplete="current-password">
+      <button class="cta" id="authSubmit" type="submit">Sign in</button>
+    </form>
+    <p class="msg" id="authMsg" role="status"></p>
+    <div class="links">
+      <button class="lnk" id="authMode">Create an account</button>
+      <button class="lnk" id="authClose">Back</button>
+    </div>
+  </div>
+</div>
+
 <div class="screen" id="boardScreen" hidden>
   <div class="card">
     <p class="runes">HALL OF SAGAS</p>
@@ -282,6 +316,11 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
       <div><b id="mKills">0</b><span>Felled</span></div>
       <div><b id="mWave">0</b><span>Best wave</span></div>
     </div>
+    <form class="nameform" id="nameForm" hidden>
+      <input id="nameInput" aria-label="Your name on the leaderboard" placeholder="Your viking name" maxlength="24" autocomplete="nickname">
+      <button class="lnk" type="submit">Save name</button>
+    </form>
+    <p class="msg" id="nameMsg" role="status" hidden></p>
     <button class="cta" id="boardClose">Back</button>
   </div>
 </div>
@@ -1106,17 +1145,27 @@ async function api(path, body) {
     : { credentials: 'same-origin' });
   if (!(r.headers.get('content-type') || '').includes('application/json')) throw new Error('offline');
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error || 'Request failed');
+  if (!r.ok) throw new Error((j && (j.error || j.message)) || 'Request failed');
   return j;
 }
 function showOnline() {
   $('online').hidden = !online.up; $('overLinks').hidden = !online.up;
   if (!online.up) return;
   const u = online.user, st = online.stats;
-  $('loginLnk').hidden = !!u; $('logoutBtn').hidden = !u;
+  $('loginBtn').hidden = !!u; $('logoutBtn').hidden = !u;
   $('who').textContent = !u ? 'Sign in to post your scores.'
     : st && st.best != null ? `${u.name} · best ${st.best.toLocaleString()} · rank #${st.rank}`
     : `${u.name} · no runs posted yet`;
+}
+// Sign-in runs through api/auth, which proxies Neon Auth. After a Google or GitHub
+// sign-in the browser returns with a one-time verifier in the address; trading it in
+// through get-session is what sets the session cookie.
+async function finishSocialSignIn() {
+  const url = new URL(location.href), key = 'neon_auth_session_verifier', v = url.searchParams.get(key);
+  if (!v) return;
+  try { await api('auth/get-session?' + key + '=' + encodeURIComponent(v)); } catch (e) {}
+  url.searchParams.delete(key);
+  history.replaceState(history.state, '', url.href);
 }
 async function refreshMe() {
   try { const j = await api('me'); online.up = true; online.user = j.user; online.stats = j.stats || null; }
@@ -1170,6 +1219,8 @@ async function loadBoard(period) {
 function openBoard() {
   const st = online.stats;
   $('myStats').hidden = !(online.user && st);
+  $('nameForm').hidden = !online.user; $('nameMsg').hidden = true;
+  if (online.user) $('nameInput').value = online.user.name;
   if (online.user && st) {
     $('mRank').textContent = st.rank ? '#' + st.rank : '-'; $('mRuns').textContent = st.runs;
     $('mKills').textContent = st.kills.toLocaleString(); $('mWave').textContent = st.bestWave;
@@ -1179,8 +1230,58 @@ function openBoard() {
 $('boardBtn').addEventListener('click', openBoard); $('boardBtn2').addEventListener('click', openBoard);
 $('boardClose').addEventListener('click', () => { $('boardScreen').hidden = true; });
 $('tabAll').addEventListener('click', () => loadBoard('all')); $('tabWeek').addEventListener('click', () => loadBoard('week'));
-$('logoutBtn').addEventListener('click', async () => { try { await api('auth/logout', {}); } catch (e) {} refreshMe(); });
-refreshMe();
+$('logoutBtn').addEventListener('click', async () => { try { await api('auth/sign-out', {}); } catch (e) {} refreshMe(); });
+
+let authCreate = false;
+function setAuthMode(create) {
+  authCreate = create;
+  $('authTitle').innerHTML = create ? 'Join <em>up</em>' : 'Sign <em>in</em>';
+  $('authName').hidden = !create;
+  $('authPass').setAttribute('autocomplete', create ? 'new-password' : 'current-password');
+  $('authSubmit').textContent = create ? 'Create account' : 'Sign in';
+  $('authMode').textContent = create ? 'I have an account' : 'Create an account';
+  $('authMsg').textContent = '';
+}
+const authBusy = on => ['authGoogle', 'authGithub', 'authSubmit'].forEach(id => { $(id).disabled = on; });
+async function socialSignIn(provider) {
+  authBusy(true); $('authMsg').textContent = 'Opening ' + (provider === 'google' ? 'Google' : 'GitHub') + '...';
+  try {
+    const j = await api('auth/sign-in/social', { provider, callbackURL: location.origin + location.pathname });
+    if (!j.url) throw new Error('Sign-in is not available right now.');
+    location.href = j.url;
+  } catch (e) { authBusy(false); $('authMsg').textContent = e.message === 'offline' ? 'Could not reach the server.' : e.message; }
+}
+$('loginBtn').addEventListener('click', () => { setAuthMode(false); $('authScreen').hidden = false; });
+$('authClose').addEventListener('click', () => { $('authScreen').hidden = true; });
+$('authMode').addEventListener('click', () => setAuthMode(!authCreate));
+$('authGoogle').addEventListener('click', () => socialSignIn('google'));
+$('authGithub').addEventListener('click', () => socialSignIn('github'));
+$('authForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = $('authEmail').value.trim(), password = $('authPass').value, name = $('authName').value.trim();
+  const msg = $('authMsg');
+  if (!/^\S+@\S+\.\S+$/.test(email)) { msg.textContent = 'Enter your email address.'; return; }
+  if (password.length < 8) { msg.textContent = 'Passwords need at least 8 characters.'; return; }
+  if (authCreate && name.length < 2) { msg.textContent = 'Pick a viking name of at least 2 characters.'; return; }
+  authBusy(true); msg.textContent = authCreate ? 'Creating account...' : 'Signing in...';
+  try {
+    await api(authCreate ? 'auth/sign-up/email' : 'auth/sign-in/email', authCreate ? { name, email, password } : { email, password });
+    await refreshMe();
+    if (online.user) { $('authPass').value = ''; $('authScreen').hidden = true; }
+    else msg.textContent = authCreate ? 'Account created. Check your email to confirm it, then sign in.' : 'Could not sign in.';
+  } catch (e) { msg.textContent = e.message === 'offline' ? 'Could not reach the server.' : e.message; }
+  authBusy(false);
+});
+$('nameForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const msg = $('nameMsg'); msg.hidden = false;
+  try {
+    const j = await api('me', { name: $('nameInput').value });
+    online.user = j.user; online.stats = j.stats; showOnline();
+    msg.textContent = 'Saved. The board updates within a minute.';
+  } catch (e) { msg.textContent = e.message === 'offline' ? 'Could not reach the server.' : e.message; }
+});
+finishSocialSignIn().then(refreshMe);
 
 /* ================= flow ================= */
 function startGame() {
@@ -1272,11 +1373,11 @@ document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (e.sca
 let lastTouchEnd = 0;
 document.addEventListener('touchend', e => {
   const t = Date.now();
-  if (t - lastTouchEnd < 350 && !(e.target.closest && e.target.closest('button,a'))) e.preventDefault();
+  if (t - lastTouchEnd < 350 && !(e.target.closest && e.target.closest('button,a,input'))) e.preventDefault();
   lastTouchEnd = t;
 }, { passive: false });
 document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
-document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('contextmenu', e => { if (e.target.tagName !== 'INPUT') e.preventDefault(); });
 // If the view gets zoomed or the window loses focus anyway, pause instead of letting the ducks feast
 function safetyPause(msg) {
   if (!S.running || S.over || S.phase === 'cards') return;
