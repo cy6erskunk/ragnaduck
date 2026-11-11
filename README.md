@@ -2,11 +2,11 @@
 
 A three.js survival game: a viking holds a fjord island against giant brain-eating ducks.
 
-`index.html` is the whole game. On a static host (GitHub Pages) it runs offline and keeps a local best score. Deployed on Vercel with the `api/` routes next to it, it adds GitHub sign-in, posted scores, player stats and a leaderboard.
+`index.html` is the whole game: a single page that loads three.js from a CDN. Opened from any static host it runs offline and keeps a local best score. Deployed on Vercel with the `api/` routes next to it, it adds GitHub sign-in, posted scores, player stats and a leaderboard.
 
 ## Deploying the online version (Vercel + Neon)
 
-1. **Vercel project.** Create a new project from this repo with Root Directory `html/ragnaduck` and the "Other" framework preset. No build command is needed.
+1. **Vercel project.** Create a new project from this repo with the "Other" framework preset. No build command is needed.
 2. **Database.** Add a Neon database to the project (Storage tab), which sets `DATABASE_URL`. Run `schema.sql` once in the Neon SQL editor.
 3. **GitHub OAuth app.** Create one under GitHub Settings → Developer settings → OAuth Apps, with the callback URL `https://<your-domain>/api/auth/callback`. Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in Vercel.
 4. **Session secret.** Set `SESSION_SECRET` to a long random string, e.g. `openssl rand -base64 48`.
@@ -62,5 +62,7 @@ UPDATE runs SET flagged = 'manual' WHERE id = '...';
 npm install
 npm test
 ```
+
+To try the game alone, serve the folder with any static server, e.g. `npx serve`.
 
 The API tests run the routes against an in-process Postgres (PGlite) with `schema.sql` applied, so they need no database or network.
